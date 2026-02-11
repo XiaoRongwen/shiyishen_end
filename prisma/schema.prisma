@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(100)
+  email     String    @unique @db.VarChar(255)
+  password  String    @db.VarChar(255)
+  avatar    String?   @db.VarChar(500)
+  role      String    @default("user") @db.VarChar(50) @map("role")
+  isActive  Boolean   @default(true) @map("is_active")
+  lastLogin DateTime? @map("last_login")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  
+  // 关联
+  files     File[]
+  chatSessions ChatSession[]
+  createBy  Int?      @map("create_by")
+  creator   User?     @relation("CreatedUsers", fields: [createBy], references: [id])
+  createdUsers User[] @relation("CreatedUsers")
+
+  @@index([email])
+  @@index([isActive])
+  @@index([role])
+  @@index([createBy])
+  @@map("users")
+}
+
+model File {
+  id           Int           @id @default(autoincrement())
+  originalName String        @map("original_name") @db.VarChar(255)
+  filename     String        @unique @db.VarChar(255)
+  mimetype     String        @db.VarChar(100)
+  size         Int
+  path         String        @db.VarChar(500)
+  userId       Int           @map("user_id")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatMessages ChatMessage[]
+  messageFiles MessageFile[]
+
+  @@index([userId])
+  @@index([filename])
+  @@map("files")
+}
+
+model EmailVerification {
+  id        Int      @id @default(autoincrement())
+  email     String   @db.VarChar(255)
+  code      String   @db.VarChar(10)
+  type      String   @db.VarChar(50) // register, reset_password, etc.
+  isUsed    Boolean  @default(false) @map("is_used")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  ipAddress String?  @db.VarChar(50) @map("ip_address")
+
+  @@index([email])
+  @@index([code])
+  @@index([expiresAt])
+  @@map("email_verifications")
+}
+
+/**
+ * 聊天会话表
+ * 存储用户的聊天会话信息
+ */
+model ChatSession {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  title     String    @db.VarChar(255)
+  model     String    @db.VarChar(100)
+  summary   String?   @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("chat_sessions")
+}
+
+/**
+ * 聊天消息表
+ * 存储聊天会话中的所有消息
+ */
+model ChatMessage {
+  id        Int       @id @default(autoincrement())
+  sessionId Int       @map("session_id")
+  role      String    @db.VarChar(50) // 'user' 或 'assistant'
+  content   String    @db.LongText
+  fileId    Int?      @map("file_id") // 保留用于向后兼容
+  createdAt DateTime  @default(now()) @map("created_at")
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  file      File?       @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  files     MessageFile[] // 多个文件关联
+
+  @@index([sessionId])
+  @@index([role])
+  @@index([fileId])
+  @@map("chat_messages")
+}
+
+/**
+ * 消息文件关联表
+ * 实现消息和文件的多对多关系
+ */
+model MessageFile {
+  id        Int      @id @default(autoincrement())
+  messageId Int      @map("message_id")
+  fileId    Int      @map("file_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  file      File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, fileId])
+  @@index([messageId])
+  @@index([fileId])
+  @@map("message_files")
+}
