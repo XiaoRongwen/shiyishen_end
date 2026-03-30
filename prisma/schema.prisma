@@ -7,122 +7,92 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 用户表
 model User {
-  id        Int       @id @default(autoincrement())
-  name      String    @db.VarChar(100)
-  email     String    @unique @db.VarChar(255)
-  password  String    @db.VarChar(255)
-  avatar    String?   @db.VarChar(500)
-  role      String    @default("user") @db.VarChar(50) @map("role")
-  isActive  Boolean   @default(true) @map("is_active")
-  lastLogin DateTime? @map("last_login")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  
-  // 关联
-  files     File[]
-  chatSessions ChatSession[]
-  createBy  Int?      @map("create_by")
-  creator   User?     @relation("CreatedUsers", fields: [createBy], references: [id])
-  createdUsers User[] @relation("CreatedUsers")
+  id           Int           @id @default(autoincrement())
+  openid       String        @unique @db.VarChar(100)
+  phone        String?       @db.VarChar(20)
+  avatar       String?       @db.VarChar(500)
+  nickname     String?       @db.VarChar(100)
+  role         String        @default("user") @db.VarChar(20)
+  lastLogin    DateTime?     @map("last_login")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  batches      Batch[]
+  userCompanies UserCompany[]
 
-  @@index([email])
-  @@index([isActive])
+  @@index([openid])
+  @@index([phone])
   @@index([role])
-  @@index([createBy])
   @@map("users")
 }
 
-model File {
-  id           Int           @id @default(autoincrement())
-  originalName String        @map("original_name") @db.VarChar(255)
-  filename     String        @unique @db.VarChar(255)
-  mimetype     String        @db.VarChar(100)
-  size         Int
-  path         String        @db.VarChar(500)
-  userId       Int           @map("user_id")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chatMessages ChatMessage[]
-  messageFiles MessageFile[]
+// 公司表
+model Company {
+  id            Int           @id @default(autoincrement())
+  name          String        @db.VarChar(200)        // 公司名称
+  code          String        @unique @db.VarChar(50) // 公司邀请码，用于绑定
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  userCompanies UserCompany[]
+  batches       Batch[]
 
-  @@index([userId])
-  @@index([filename])
-  @@map("files")
-}
-
-model EmailVerification {
-  id        Int      @id @default(autoincrement())
-  email     String   @db.VarChar(255)
-  code      String   @db.VarChar(10)
-  type      String   @db.VarChar(50) // register, reset_password, etc.
-  isUsed    Boolean  @default(false) @map("is_used")
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  ipAddress String?  @db.VarChar(50) @map("ip_address")
-
-  @@index([email])
   @@index([code])
-  @@index([expiresAt])
-  @@map("email_verifications")
+  @@map("companies")
 }
 
-/**
- * 聊天会话表
- * 存储用户的聊天会话信息
- */
-model ChatSession {
-  id        Int       @id @default(autoincrement())
-  userId    Int       @map("user_id")
-  title     String    @db.VarChar(255)
-  model     String    @db.VarChar(100)
-  summary   String?   @db.Text
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  ChatMessage[]
+// 用户-公司关联表（多对多）
+model UserCompany {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  companyId   Int      @map("company_id")
+  role        String   @default("member") @db.VarChar(20) // owner=创建者, member=成员
+  isDefault   Boolean  @default(false) @map("is_default") // 是否为当前选中公司
+  joinedAt    DateTime @default(now()) @map("joined_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+  @@map("user_companies")
+}
+
+// 批次表
+model Batch {
+  id               Int          @id @default(autoincrement())
+  batchNo          String       @unique @db.VarChar(50)
+  productName      String       @db.VarChar(100)
+  productBatchNo   String       @db.VarChar(50)
+  componentName    String       @db.VarChar(100)
+  componentBatchNo String       @db.VarChar(50)
+  auditStatus      String       @default("pending") @db.VarChar(20)
+  auditRemark      String?      @db.VarChar(500)
+  userId           Int          @map("user_id")
+  companyId        Int          @map("company_id")
+  user             User         @relation(fields: [userId], references: [id])
+  company          Company      @relation(fields: [companyId], references: [id])
+  photos           BatchPhoto[]
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
 
   @@index([userId])
-  @@index([createdAt])
-  @@map("chat_sessions")
+  @@index([companyId])
+  @@index([auditStatus])
+  @@index([productName])
+  @@map("batches")
 }
 
-/**
- * 聊天消息表
- * 存储聊天会话中的所有消息
- */
-model ChatMessage {
-  id        Int       @id @default(autoincrement())
-  sessionId Int       @map("session_id")
-  role      String    @db.VarChar(50) // 'user' 或 'assistant'
-  content   String    @db.LongText
-  fileId    Int?      @map("file_id") // 保留用于向后兼容
-  createdAt DateTime  @default(now()) @map("created_at")
-  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  file      File?       @relation(fields: [fileId], references: [id], onDelete: SetNull)
-  files     MessageFile[] // 多个文件关联
-
-  @@index([sessionId])
-  @@index([role])
-  @@index([fileId])
-  @@map("chat_messages")
-}
-
-/**
- * 消息文件关联表
- * 实现消息和文件的多对多关系
- */
-model MessageFile {
+// 批次照片表
+model BatchPhoto {
   id        Int      @id @default(autoincrement())
-  messageId Int      @map("message_id")
-  fileId    Int      @map("file_id")
+  batchId   Int      @map("batch_id")
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  category  Int      // 1-14，对应照片分类
+  url       String   @db.VarChar(500)
   createdAt DateTime @default(now()) @map("created_at")
-  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  file      File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-  @@unique([messageId, fileId])
-  @@index([messageId])
-  @@index([fileId])
-  @@map("message_files")
+  @@index([batchId])
+  @@index([category])
+  @@map("batch_photos")
 }

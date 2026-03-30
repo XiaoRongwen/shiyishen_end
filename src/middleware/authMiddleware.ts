@@ -1,35 +1,30 @@
-import { Request, Response, NextFunction } from 'express';
-import { unauthorized, forbidden, badRequest, error } from '../utils/response';
+﻿import { Request, Response, NextFunction } from 'express';
+import { unauthorized } from '../utils/response';
 import { extractTokenFromHeader, verifyToken } from '../utils/auth';
 import { prisma } from '../utils/database';
-import { config } from '@/config';
 
 /**
- * JWT认证中间件
- * 验证请求头中的JWT令牌，并将用户信息添加到req.user中
+ * JWT authentication middleware
  */
 export const authenticateToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // 从请求头中提取token
     const authHeader = req.headers.authorization;
     const token = extractTokenFromHeader(authHeader);
 
     if (!token) {
-      unauthorized(res, '登陆失效了哟！');
+      unauthorized(res, '登录失效，请重新登录');
       return;
     }
 
-    // 验证token
     const decoded = verifyToken(token);
 
-    // 验证用户是否仍然存在且处于活跃状态
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
         id: true,
-        name: true,
-        email: true,
-        isActive: true
+        openid: true,
+        phone: true,
+        role: true,
       }
     });
 
@@ -38,19 +33,13 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       return;
     }
 
-    if (!user.isActive) {
-      forbidden(res, '账户已被禁用');
-      return;
-    }
-
-    // 将用户信息添加到请求对象中
-    req.user = decoded;
+    req.user = { ...decoded, role: user.role };
     next();
 
   } catch (error: any) {
-    if (error.message.includes('Token已过期')) {
+    if (error.message && error.message.includes('Token已过期')) {
       unauthorized(res, 'Token已过期，请重新登录');
-    } else if (error.message.includes('无效的Token')) {
+    } else if (error.message && error.message.includes('无效的Token')) {
       unauthorized(res, '无效的访问令牌');
     } else {
       unauthorized(res, 'Token验证失败');
@@ -59,47 +48,51 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 };
 
 /**
- * 可选的JWT认证中间件
- * 如果有token则验证并添加用户信息，没有token则继续执行
- * 用于那些登录和未登录都可以访问，但需要根据登录状态显示不同内容的接口
+ * 角色权限中间件工厂
+ * 用法：requireRole('admin') 或 requireRole('admin', 'auditor')
+ */
+export const requireRole = (...roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const role = req.user?.role;
+    if (!role || !roles.includes(role)) {
+      res.status(403).json({ success: false, message: '权限不足' });
+      return;
+    }
+    next();
+  };
+};
+
+/**
+ * Optional JWT authentication middleware
  */
 export const optionalAuthenticateToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // 从请求头中提取token
     const authHeader = req.headers.authorization;
     const token = extractTokenFromHeader(authHeader);
 
-    // 如果没有token，直接继续执行
     if (!token) {
       next();
       return;
     }
 
-    // 验证token
     const decoded = verifyToken(token);
 
-    // 验证用户是否仍然存在且处于活跃状态
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
         id: true,
-        name: true,
-        email: true,
-        isActive: true
+        openid: true,
+        phone: true
       }
     });
 
-    // 如果用户存在且活跃，添加到请求对象中
-    if (user && user.isActive) {
+    if (user) {
       req.user = decoded;
     }
 
     next();
 
   } catch (error: any) {
-    // 如果token验证失败，也继续执行（不阻止访问）
     next();
   }
 };
-
-

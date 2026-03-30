@@ -1,91 +1,45 @@
 import { Router } from 'express';
-import { 
-  register, 
-  login, 
-  refreshToken, 
-  getCurrentUser, 
-  changePassword, 
-  logout, 
-  checkEmailAvailability,
-  generateCaptcha,
-  resetPassword
-} from '@/controllers/v1/authController';
-import { sendEmailCode } from '@/controllers/v1/emailController';
-import { authenticateToken } from '@/middleware/authMiddleware';
-import { authRateLimit } from '@/utils/rateLimiter';
+import multer from 'multer';
+import path from 'path';
+import { wechatPhoneLogin, getCurrentUser, updateUserRole, getAllUsers, updateProfile, uploadAvatar } from '../../controllers/v1/authController';
+import { authenticateToken } from '../../middleware/authMiddleware';
 
 const router = Router();
 
-/**
- * 认证相关路由
- * 前缀: /api/v1/auth
- */
+const storage = multer.diskStorage({
+  destination: 'uploads/',
+  filename: (_, file, cb) => cb(null, `avatar-${Date.now()}${path.extname(file.originalname)}`)
+});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 /**
- * POST /api/v1/auth/register
- * 用户注册 (公开路由)
- * 限流: 已启用
+ * POST /api/v1/auth/wechat-login
+ * 微信手机号登录
  */
-router.post('/register', authRateLimit, register);
-
-/**
- * POST /api/v1/auth/login
- * 用户登录 (公开路由)
- * 限流: 已启用
- */
-router.post('/login', authRateLimit, login);
-
-/**
- * POST /api/v1/auth/refresh
- * 刷新访问令牌 (需要认证)
- * 限流: 已启用
- */
-router.post('/refresh', authRateLimit, refreshToken);
+router.post('/wechat-login', wechatPhoneLogin);
 
 /**
  * GET /api/v1/auth/me
- * 获取当前用户信息 (需要认证)
+ * 获取当前用户信息
  */
 router.get('/me', authenticateToken, getCurrentUser);
 
 /**
- * PUT /api/v1/auth/password
- * 修改密码 (需要认证)
- * 限流: 已启用
+ * PUT /api/v1/auth/role
+ * 更新用户角色（仅管理员）
  */
-router.put('/password', authenticateToken, authRateLimit, changePassword);
+router.put('/role', authenticateToken, updateUserRole);
 
 /**
- * POST /api/v1/auth/logout
- * 用户登出 (需要认证)
+ * PUT /api/v1/auth/profile
+ * 更新用户头像和昵称
  */
-router.post('/logout', authenticateToken, logout);
+router.put('/profile', authenticateToken, updateProfile);
 
 /**
- * GET /api/v1/auth/check-email
- * 检查邮箱可用性 (公开路由)
- * 查询参数: email
+ * POST /api/v1/auth/avatar
+ * 上传头像文件
  */
-router.get('/check-email', checkEmailAvailability);
-
-/**
- * GET /api/v1/auth/captcha
- * 生成验证码图片 (公开路由)
- */
-router.get('/captcha', generateCaptcha);
-
-/**
- * POST /api/v1/auth/send-email-code
- * 发送邮箱验证码 (公开路由)
- * 限流: 已启用
- */
-router.post('/send-email-code', authRateLimit, sendEmailCode);
-
-/**
- * POST /api/v1/auth/reset-password
- * 重置密码 (公开路由)
- * 限流: 已启用
- */
-router.post('/reset-password', authRateLimit, resetPassword);
+router.post('/avatar', authenticateToken, upload.single('avatar'), uploadAvatar);
 
 export default router;
